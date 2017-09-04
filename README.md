@@ -1,0 +1,1 @@
+# contoso-template-azure
