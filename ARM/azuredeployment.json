@@ -1,69 +1,101 @@
 {
   "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
   "contentVersion": "1.0.0.0",
-	"parameters": {
-	    "adminUsername": {
-	      "type": "string",
-	      "metadata": {
-	        "description": "Admin username for VM"
-	      }
-	    },
-	    "adminPassword": {
-	      "type": "securestring",
-	      "metadata": {
-	        "description": "Admin password for VMs"
-	      }
-		  
-		},
-		  "localGatewayIp": {
-	      "type": "string",
-	      "metadata": {
-	        "description": "IP address for rras gateway."
-	      }
-	    }
-	},
-  	"variables": {
-	    "apiVersion": "2015-06-15",
-		"vnetName": "VNet1",
-		"vnetAddressPrefix": "10.0.0.0/16",
-		"subnet1Prefix": "10.0.0.0/24",
-		"subnet2Prefix": "10.0.1.0/24",
-		"subnet1Name": "serviceSubnet",
-		"subnet2Name": "GatewaySubnet",
-		"gwyVnetID": "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]",
-		"storageAccountName": "[concat(uniquestring(resourceGroup().id), 'sawinvm')]",
-		"webAvailabilitySetName": "WebAvailabilitySet",
-		"dcAvailabilitySetName": "DcAvailabilitySet",
-		"Windows": {
-	      "publisher": "MicrosoftWindowsServer",
-	      "offer": "WindowsServer",
-	      "sku": "2016-Datacenter",
-	      "version": "latest"
-	    },
-		"webVmSize": "Standard_A1"
+  "parameters": {
+    "adminUsername": {
+      "type": "string",
+      "metadata": {
+        "description": "Admin username for VM"
+      }
+    },
+    "adminPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Admin password for VMs"
+      }
+
+    },
+    "localGatewayIp": {
+      "type": "string",
+      "metadata": {
+        "description": "IP address for rras gateway."
+      }
+    },
+    "lbname": {
+      "type": "string",
+      "defaultValue": "weblb"
+    },
+    "lbpipname": {
+      "type": "string",
+      "defaultValue": "lbpublicip"
+    }
+  },
+  "variables": {
+    "apiVersion": "2015-06-15",
+    "vnetName": "VNet1",
+    "vnetAddressPrefix": "10.0.0.0/16",
+    "subnet1Prefix": "10.0.0.0/24",
+    "subnet2Prefix": "10.0.1.0/24",
+    "subnet1Name": "serviceSubnet",
+    "subnet2Name": "GatewaySubnet",
+    "vnetDMZName": "DMZ",
+    "vnetDMZPrefix": "10.0.2.0/24",
+    "gwyVnetID": "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]",
+    "storageAccountName": "[concat(uniquestring(resourceGroup().id), 'sawinvm')]",
+    "webAvailabilitySetName": "WebAvailabilitySet",
+    "dcAvailabilitySetName": "DcAvailabilitySet",
+    "Windows": {
+      "publisher": "MicrosoftWindowsServer",
+      "offer": "WindowsServer",
+      "sku": "2016-Datacenter",
+      "version": "latest"
+    },
+    "webVmSize": "Standard_D1_v2",
+    "lbID": "[resourceId('Microsoft.Network/loadBalancers',parameters('lbName'))]",
+    "frontEndIPConfigID": "[concat(variables('lbID'),'/frontendIPConfigurations/LoadBalancerFrontEnd')]",
+    "lbPoolID": "[concat(variables('lbID'),'/backendAddressPools/BackendPool1')]",
+    "lbProbeID": "[concat(variables('lbID'),'/probes/tcpProbe')]",
+    "vnetID": "[resourceId('Microsoft.Network/virtualNetworks',variables('vnetName'))]",
+    "subnetRef": "[concat(variables('vnetID'),'/subnets/serviceSubnet')]",
+    "nsgname": "internalsubnetnsg",
+    "webServerIp": "10.0.2.8",
+    "dnsServerIp": "10.0.2.10",
+    "ftpServerIp": "10.0.2.21",
+    "dnsServerPort": "53",
+    "webServerPort": "80",
+    "webServerSecurePort": "443",
+    "ftpServerCommunicationPort": "21",
+    "ftpServerDataPort": "20",
+    "rdpPort": "3389"
   },
   "resources": [
-	{
+    {
       "apiVersion": "[variables('apiVersion')]",
       "type": "Microsoft.Network/virtualNetworks",
       "name": "[variables('vnetName')]",
       "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[concat('Microsoft.Network/networksecuritygroups/', variables('nsgname'))]"
+      ],
       "properties": {
         "addressSpace": {
           "addressPrefixes": [
             "[variables('vnetAddressPrefix')]"
           ]
         },
-		"dhcpOptions": {
-			"dnsServers": [
-				"192.168.0.4"
-			]
-		},
+        "dhcpOptions": {
+          "dnsServers": [
+            "192.168.0.4"
+          ]
+        },
         "subnets": [
           {
             "name": "[variables('subnet1Name')]",
             "properties": {
-              "addressPrefix": "[variables('subnet1Prefix')]"
+              "addressPrefix": "[variables('subnet1Prefix')]",
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networksecuritygroups', variables('nsgname'))]"
+              }
             }
           },
           {
@@ -71,34 +103,40 @@
             "properties": {
               "addressPrefix": "[variables('subnet2Prefix')]"
             }
+          },
+          {
+            "name": "[variables('vnetDMZName')]",
+            "properties": {
+              "addressPrefix": "[variables('vnetDMZPrefix')]"
+            }
           }
         ]
       }
     },
-	{
-	  "apiVersion": "2015-06-15",
-	  "type": "Microsoft.Network/publicIPAddresses",
-	  "name": "[concat('TestPip-', copyIndex(1))]",
-	  "location": "[resourceGroup().location]",
-		"copy": {
-			"name": "pipLoop",
-			"count": 4
-		},
-	  "properties": {
-	    "publicIPAllocationMethod": "Dynamic"
-	  },
-	  "tags": {
-	    "displayName": "PublicIPAddress-Web"
-	  }
-	},
-	{
+    {
+      "apiVersion": "2015-06-15",
+      "type": "Microsoft.Network/publicIPAddresses",
+      "name": "[concat('TestPip-', copyIndex(1))]",
+      "location": "[resourceGroup().location]",
+      "copy": {
+        "name": "pipLoop",
+        "count": 4
+      },
+      "properties": {
+        "publicIPAllocationMethod": "Dynamic"
+      },
+      "tags": {
+        "displayName": "PublicIPAddress-Web"
+      }
+    },
+    {
       "type": "Microsoft.Network/networkInterfaces",
       "name": "[concat('nic', copyindex(1))]",
       "apiVersion": "2016-03-30",
       "location": "[resourceGroup().location]",
       "copy": {
         "name": "nicLoop",
-        "count": 4
+        "count": 2
       },
       "dependsOn": [
         "[variables('vnetName')]"
@@ -108,11 +146,11 @@
           {
             "name": "ipconfig1",
             "properties": {
-              	"privateIPAllocationMethod": "Static",
-				"privateIPAddress": "[concat('10.0.0.', copyIndex(4))]",
-				"publicIPAddress": {
-		        	"id": "[resourceId('Microsoft.Network/publicIPAddresses', concat('TestPip-', copyIndex(1)))]"
-		         },
+              "privateIPAllocationMethod": "Static",
+              "privateIPAddress": "[concat('10.0.0.', copyIndex(4))]",
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', concat('TestPip-', copyIndex(1)))]"
+              },
               "subnet": {
                 "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets',variables('vnetName'),variables('subnet1Name'))]"
               }
@@ -121,205 +159,450 @@
         ]
       }
     },
-	{
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "[concat('nic', copyindex(3))]",
+      "apiVersion": "2016-03-30",
+      "location": "[resourceGroup().location]",
+      "copy": {
+        "name": "nicLoop",
+        "count": 2
+      },
+      "dependsOn": [
+        "[variables('vnetName')]",
+        "[concat(resourceId('Microsoft.Network/loadBalancers/', parameters('lbname')))]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "privateIPAllocationMethod": "Static",
+              "privateIPAddress": "[concat('10.0.0.', copyIndex(6))]",
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', concat('TestPip-', copyIndex(3)))]"
+              },
+              "subnet": {
+                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets',variables('vnetName'),variables('subnet1Name'))]"
+              },
+              "loadBalancerBackendAddressPools": [
+                {
+                  "id": "[concat(variables('lbId'), '/backendAddressPools/BackendPool1')]"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
       "type": "Microsoft.Storage/storageAccounts",
       "name": "[variables('storageAccountName')]",
       "apiVersion": "2016-01-01",
       "location": "[resourceGroup().location]",
       "sku": {
-        "name": "Standard_LRS"
+        "name": "Standard_GRS"
       },
       "kind": "Storage",
       "properties": {}
     },
-	{
-    	"type": "Microsoft.Compute/availabilitySets",
-    	"name": "[variables('webAvailabilitySetName')]",
-    	"apiVersion": "2016-04-30-preview",
-		"location": "[resourceGroup().location]",
-		"properties": {
-	    	"platformFaultDomainCount": "2",
-	    	"platformUpdateDomainCount": "2",
-	    	"managed" : "true"
-		}
-    },
-	{
-		"type": "Microsoft.Compute/virtualMachines",
-		"name": "[concat('Web', copyIndex(1))]",
-		"apiVersion": "2017-03-30",
-		"location": "[resourceGroup().location]",
-		"copy": {
-			"name": "vmLoop",
-			"count": 2
-		},
-		"dependsOn": [
-			"[resourceId('Microsoft.Storage/storageAccounts/', variables('storageAccountName'))]",
-			"[concat('Microsoft.Compute/availabilitySets/', variables('webAvailabilitySetName'))]"
-		],
-		"properties": {
-			"availabilitySet": {
-				"id": "[resourceId('Microsoft.Compute/availabilitySets', variables('webAvailabilitySetName'))]"
-			},
-			"hardwareProfile": {
-				"vmSize": "[variables('webVmSize')]"
-			},
-			"osProfile": {
-				"computerName": "[concat('Web', copyIndex(1))]",
-          		"adminUsername": "[parameters('adminUsername')]",
-          		"adminPassword": "[parameters('adminPassword')]"
-			},
-			"storageProfile": {
-		         "imageReference": "[variables('Windows')]",
-		         "osDisk": {
-		           "createOption": "FromImage"
-		          }
-        	},
-			"networkProfile": {
-		          "networkInterfaces": [
-		            {
-		              "id": "[resourceId('Microsoft.Network/networkInterfaces',concat('nic', copyindex(1)))]"
-		            }
-		          ]
-        	}
-			
-		}
-		
-	},
-	{
-    	"type": "Microsoft.Compute/availabilitySets",
-    	"name": "[variables('dcAvailabilitySetName')]",
-    	"apiVersion": "2016-04-30-preview",
-		"location": "[resourceGroup().location]",
-		"properties": {
-	    	"platformFaultDomainCount": "2",
-	    	"platformUpdateDomainCount": "2",
-	    	"managed" : "true"
-		}
-    },
-	{
-		"type": "Microsoft.Compute/virtualMachines",
-		"name": "[concat('DC', copyIndex(2))]",
-		"apiVersion": "2017-03-30",
-		"location": "[resourceGroup().location]",
-		"copy": {
-			"name": "vmLoop",
-			"count": 2
-		},
-		"dependsOn": [
-			"[resourceId('Microsoft.Storage/storageAccounts/', variables('storageAccountName'))]",
-			"[concat('Microsoft.Compute/availabilitySets/', variables('dcAvailabilitySetName'))]"
-		],
-		"properties": {
-			"availabilitySet": {
-				"id": "[resourceId('Microsoft.Compute/availabilitySets', variables('dcAvailabilitySetName'))]"
-			},
-			"hardwareProfile": {
-				"vmSize": "[variables('webVmSize')]"
-			},
-			"osProfile": {
-				"computerName": "[concat('DC', copyIndex(2))]",
-          		"adminUsername": "[parameters('adminUsername')]",
-          		"adminPassword": "[parameters('adminPassword')]"
-			},
-			"storageProfile": {
-		         "imageReference": "[variables('Windows')]",
-		         "osDisk": {
-		           "createOption": "FromImage"
-		          }
-        	},
-			"networkProfile": {
-		          "networkInterfaces": [
-		            {
-		              "id": "[resourceId('Microsoft.Network/networkInterfaces',concat('nic', copyindex(3)))]"
-		            }
-		          ]
-        	}
-			
-		}
-		
-	},
-	{
-        "apiVersion": "[variables('apiVersion')]",
-        "type": "Microsoft.Network/localNetworkGateways",
-        "name": "localGateway",
-        "location": "[resourceGroup().location]",
-        "properties": {
-          "localNetworkAddressSpace": {
-            "addressPrefixes": [
-              "192.168.0.0/24"
-            ]
-          },
-          "gatewayIpAddress": "[parameters('localGatewayIp')]"
-        },
-		"dependsOn": [
-			"[concat('Microsoft.Compute/VirtualMachines/', 'DC3')]"
-		]
-      },
-	{
-	  "apiVersion": "2015-06-15",
-	  "type": "Microsoft.Network/publicIPAddresses",
-	  "name": "gatewayPip",
-	  "location": "[resourceGroup().location]",
-	  "properties": {
-	    "publicIPAllocationMethod": "Dynamic"
-	  },
-	  "tags": {
-	    "displayName": "PublicIPAddress-VPN"
-	  }
-	},
-	{
-        "apiVersion": "[variables('apiVersion')]",
-        "type": "Microsoft.Network/virtualNetworkGateways",
-        "name": "vpnGateway",
-        "location": "[resourceGroup().location]",
-        "dependsOn": [
-          "[concat('Microsoft.Network/publicIPAddresses/', 'gatewayPip')]",
-          "[concat('Microsoft.Network/virtualNetworks/', 'VNet1')]"
-        ],
-        "properties": {
-          "ipConfigurations": [
-            {
-              "properties": {
-                "privateIPAllocationMethod": "Dynamic",
-                "subnet": {
-                  "id": "[concat(variables('gwyVnetID'),'/subnets/','GatewaySubnet')]"
-                },
-                "publicIPAddress": {
-                  "id": "[resourceId('Microsoft.Network/publicIPAddresses','gatewayPip')]"
-                }
-              },
-              "name": "vnetGatewayConfig"
-            }
-          ],
-          "sku": {
-            "name": "Basic",
-            "tier": "Basic"
-          },
-          "gatewayType": "Vpn",
-          "vpnType": "RouteBased",
-          "enableBgp": "true"
-        }
-      },
     {
-        "apiVersion": "[variables('apiVersion')]",
-        "name": "localGwy-vpnGwy-connection",
-        "type": "Microsoft.Network/connections",
-        "location": "[resourceGroup().location]",
-        "dependsOn": [
-          "[concat('Microsoft.Network/virtualNetworkGateways/', 'vpnGateway')]",
-          "[concat('Microsoft.Network/localNetworkGateways/', 'localGateway')]"
+      "type": "Microsoft.Compute/availabilitySets",
+      "name": "[variables('webAvailabilitySetName')]",
+      "apiVersion": "2016-04-30-preview",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "platformFaultDomainCount": "2",
+        "platformUpdateDomainCount": "2",
+        "managed": "true"
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "name": "[concat('Web', copyIndex(1))]",
+      "apiVersion": "2017-03-30",
+      "location": "[resourceGroup().location]",
+      "copy": {
+        "name": "vmLoop",
+        "count": 2
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts/', variables('storageAccountName'))]",
+        "[concat('Microsoft.Compute/availabilitySets/', variables('webAvailabilitySetName'))]",
+        "[resourceId('Microsoft.Network/networkInterfaces', concat('nic', copyindex(3)))]"
+      ],
+      "properties": {
+        "availabilitySet": {
+          "id": "[resourceId('Microsoft.Compute/availabilitySets', variables('webAvailabilitySetName'))]"
+        },
+        "hardwareProfile": {
+          "vmSize": "[variables('webVmSize')]"
+        },
+        "osProfile": {
+          "computerName": "[concat('Web', copyIndex(1))]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPassword')]"
+        },
+        "storageProfile": {
+          "imageReference": "[variables('Windows')]",
+          "osDisk": {
+            "createOption": "FromImage"
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces',concat('nic', copyindex(1)))]"
+            }
+          ]
+        }
+
+      }
+
+    },
+    {
+      "type": "Microsoft.Compute/availabilitySets",
+      "name": "[variables('dcAvailabilitySetName')]",
+      "apiVersion": "2016-04-30-preview",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "platformFaultDomainCount": "2",
+        "platformUpdateDomainCount": "2",
+        "managed": "true"
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "name": "[concat('DC', copyIndex(2))]",
+      "apiVersion": "2017-03-30",
+      "location": "[resourceGroup().location]",
+      "copy": {
+        "name": "vmLoop",
+        "count": 2
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts/', variables('storageAccountName'))]",
+        "[concat('Microsoft.Compute/availabilitySets/', variables('dcAvailabilitySetName'))]",
+        "[resourceId('Microsoft.Network/networkInterfaces', concat('nic', copyindex(3)))]"
+      ],
+      "properties": {
+        "availabilitySet": {
+          "id": "[resourceId('Microsoft.Compute/availabilitySets', variables('dcAvailabilitySetName'))]"
+        },
+        "hardwareProfile": {
+          "vmSize": "[variables('webVmSize')]"
+        },
+        "osProfile": {
+          "computerName": "[concat('DC', copyIndex(2))]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPassword')]"
+        },
+        "storageProfile": {
+          "imageReference": "[variables('Windows')]",
+          "osDisk": {
+            "createOption": "FromImage"
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces',concat('nic', copyindex(3)))]"
+            }
+          ]
+        }
+
+      }
+
+    },
+    {
+      "apiVersion": "[variables('apiVersion')]",
+      "type": "Microsoft.Network/localNetworkGateways",
+      "name": "localGateway",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "localNetworkAddressSpace": {
+          "addressPrefixes": [
+            "192.168.0.0/24"
+          ]
+        },
+        "gatewayIpAddress": "[parameters('localGatewayIp')]"
+      },
+      "dependsOn": [
+        "[concat('Microsoft.Compute/VirtualMachines/', 'DC3')]"
+      ]
+    },
+    {
+      "apiVersion": "2015-06-15",
+      "type": "Microsoft.Network/publicIPAddresses",
+      "name": "gatewayPip",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "publicIPAllocationMethod": "Dynamic"
+      },
+      "tags": {
+        "displayName": "PublicIPAddress-VPN"
+      }
+    },
+    {
+      "apiVersion": "[variables('apiVersion')]",
+      "type": "Microsoft.Network/virtualNetworkGateways",
+      "name": "vpnGateway",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[concat('Microsoft.Network/publicIPAddresses/', 'gatewayPip')]",
+        "[concat('Microsoft.Network/virtualNetworks/', 'VNet1')]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "subnet": {
+                "id": "[concat(variables('gwyVnetID'),'/subnets/','GatewaySubnet')]"
+              },
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses','gatewayPip')]"
+              }
+            },
+            "name": "vnetGatewayConfig"
+          }
         ],
-        "properties": {
-          "virtualNetworkGateway1": {
-            "id": "[resourceId('Microsoft.Network/virtualNetworkGateways', 'vpnGateway')]"
-          },
-          "localNetworkGateway2": {
-            "id": "[resourceId('Microsoft.Network/localNetworkGateways', 'localGateway')]"
-          },
-          "connectionType": "IPsec",
-          "routingWeight": 10,
-          "sharedKey": "OnlyLettersAndNumbers1"
+        "sku": {
+          "name": "Basic",
+          "tier": "Basic"
+        },
+        "gatewayType": "Vpn",
+        "vpnType": "RouteBased",
+        "enableBgp": "true"
+      }
+    },
+    {
+      "apiVersion": "[variables('apiVersion')]",
+      "name": "localGwy-vpnGwy-connection",
+      "type": "Microsoft.Network/connections",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[concat('Microsoft.Network/virtualNetworkGateways/', 'vpnGateway')]",
+        "[concat('Microsoft.Network/localNetworkGateways/', 'localGateway')]"
+      ],
+      "properties": {
+        "virtualNetworkGateway1": {
+          "id": "[resourceId('Microsoft.Network/virtualNetworkGateways', 'vpnGateway')]"
+        },
+        "localNetworkGateway2": {
+          "id": "[resourceId('Microsoft.Network/localNetworkGateways', 'localGateway')]"
+        },
+        "connectionType": "IPsec",
+        "routingWeight": 10,
+        "sharedKey": "OnlyLettersAndNumbers1"
+      }
+    },
+    {
+      "apiVersion": "2015-05-01-preview",
+      "type": "Microsoft.Network/loadBalancers",
+      "name": "[parameters('lbname')]",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "Microsoft.Network/virtualNetworks/VNet1"
+      ],
+      "properties": {
+        "frontendIPConfigurations": [
+          {
+            "properties": {
+              "subnet": {
+                "id": "[variables('subnetRef')]"
+              },
+              "privateIPAddress": "10.0.0.100",
+              "privateIPAllocationMethod": "Static"
+            },
+            "name": "LoadBalancerFrontend"
+          }
+        ],
+        "backendAddressPools": [
+          {
+            "name": "BackendPool1"
+          }
+        ],
+        "loadBalancingRules": [
+          {
+            "properties": {
+              "frontendIPConfiguration": {
+                "id": "[concat(resourceId('Microsoft.Network/loadBalancers', parameters('lbname')), '/frontendIpConfigurations/LoadBalancerFrontend')]"
+              },
+              "backendAddressPool": {
+                "id": "[concat(resourceId('Microsoft.Network/loadBalancers', parameters('lbname')), '/backendAddressPools/BackendPool1')]"
+              },
+              "probe": {
+                "id": "[concat(resourceId('Microsoft.Network/loadBalancers', parameters('lbname')), '/probes/lbprobe')]"
+              },
+              "protocol": "Tcp",
+              "frontendPort": 80,
+              "backendPort": 80,
+              "idleTimeoutInMinutes": 15
+            },
+            "Name": "lbrule"
+          }
+        ],
+        "probes": [
+          {
+            "properties": {
+              "protocol": "Tcp",
+              "port": 80,
+              "intervalInSeconds": 15,
+              "numberOfProbes": 2
+            },
+            "name": "lbprobe"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "2015-05-01-preview",
+      "type": "Microsoft.Network/publicIPAddresses",
+      "name": "[parameters('lbpipname')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "publicIPAllocationMethod": "Static",
+        "dnsSettings": {
+          "domainNameLabel": "lbpiplabel"
         }
       }
+    },
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2017-06-01",
+      "name": "[variables('nsgname')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "enable_internet_out",
+            "properties": {
+              "description": "Enable Internet outbound from Internal",
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "*",
+              "sourceAddressPrefix": "[variables('subnet1Prefix')]",
+              "destinationAddressPrefix": "Internet",
+              "access": "Allow",
+              "priority": 3500,
+              "direction": "Outbound"
+            }
+          },
+          {
+            "name": "deny_all_in",
+            "properties": {
+              "description": "Deny all requests to Internal subnet",
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "*",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "[variables('subnet1Prefix')]",
+              "access": "Deny",
+              "priority": 4000,
+              "direction": "Inbound"
+            }
+          },
+          {
+            "name": "deny_all_out",
+            "properties": {
+              "description": "Deny all requests from Internal subnet",
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "*",
+              "sourceAddressPrefix": "[variables('subnet1Prefix')]",
+              "destinationAddressPrefix": "*",
+              "access": "Deny",
+              "priority": 3900,
+              "direction": "Outbound"
+            }
+          },
+          {
+            "name": "allow_dns_dmz_out",
+            "properties": {
+              "description": "Allow DNS request to DMZ",
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "[variables('dnsServerPort')]",
+              "sourceAddressPrefix": "[variables('subnet1Prefix')]",
+              "destinationAddressPrefix": "[variables('dnsServerIp')]",
+              "access": "Allow",
+              "priority": 110,
+              "direction": "Outbound"
+            }
+          },
+          {
+            "name": "allow_web_dmz_out",
+            "properties": {
+              "description": "Allow web request port 80 to DMZ",
+              "protocol": "Tcp",
+              "sourcePortRange": "*",
+              "destinationPortRange": "[variables('webServerPort')]",
+              "sourceAddressPrefix": "[variables('subnet1Prefix')]",
+              "destinationAddressPrefix": "[variables('webServerIp')]",
+              "access": "Allow",
+              "priority": 120,
+              "direction": "Outbound"
+            }
+          },
+          {
+            "name": "allow_web_secure_dmz_out",
+            "properties": {
+              "description": "Allow secure web requests port 443 to DMZ",
+              "protocol": "Tcp",
+              "sourcePortRange": "*",
+              "destinationPortRange": "[variables('webServerSecurePort')]",
+              "sourceAddressPrefix": "[variables('subnet1Prefix')]",
+              "destinationAddressPrefix": "[variables('webServerIp')]",
+              "access": "Allow",
+              "priority": 130,
+              "direction": "Outbound"
+            }
+          },
+          {
+            "name": "allow_ftp_dmz_out",
+            "properties": {
+              "description": "Allow FTP requests port 21 to DMZ",
+              "protocol": "Tcp",
+              "sourcePortRange": "*",
+              "destinationPortRange": "[variables('ftpServerCommunicationPort')]",
+              "sourceAddressPrefix": "[variables('subnet1Prefix')]",
+              "destinationAddressPrefix": "[variables('ftpServerIp')]",
+              "access": "Allow",
+              "priority": 140,
+              "direction": "Outbound"
+            }
+          },
+          {
+            "name": "allow_ftp_data_internal_in",
+            "properties": {
+              "description": "Allow FTP data communication port 20 to internal",
+              "protocol": "Tcp",
+              "sourcePortRange": "[variables('ftpServerDataPort')]",
+              "destinationPortRange": "*",
+              "sourceAddressPrefix": "[variables('ftpServerIp')]",
+              "destinationAddressPrefix": "[variables('subnet1Prefix')]",
+              "access": "Allow",
+              "priority": 150,
+              "direction": "Inbound"
+            }
+          },
+          {
+            "name": "allow_rdp_dmz_out",
+            "properties": {
+              "description": "Allow RDP to DMZ",
+              "protocol": "Tcp",
+              "sourcePortRange": "*",
+              "destinationPortRange": "[variables('rdpPort')]",
+              "sourceAddressPrefix": "[variables('subnet1Prefix')]",
+              "destinationAddressPrefix": "[variables('vnetDMZPrefix')]",
+              "access": "Allow",
+              "priority": 160,
+              "direction": "Outbound"
+            }
+          }
+        ]
+      }
+    }
   ]
 }
