@@ -3,7 +3,14 @@
 #>
 $rg = "TemplateDeploymentRG"
 $automationRg = "ContosoAutomationRG"
+$automationAcc = "ContosoAutomation"
 $location = "West Europe"
+
+
+<#
+    List resources
+#>
+Write-Host -ForegroundColor Cyan "Listing all resources in resource group $($rg.ResourceGroupName):"
 
 <# 
     Create resource group and deploy ARM template to the resource group.
@@ -69,7 +76,6 @@ do {
     $iisJob = $iisJob | Get-AzureRmAutomationDscCompilationJob
     $dcJob = $dcJob | Get-AzureRmAutomationDscCompilationJob
     Start-Sleep -s 30
-    Write-Output "Venter 15 sekunder på jobbstatus..."
 } while ($iisJob.Status -ne "Completed" -or $dcJob.Status -ne "Completed")
 Write-Host -ForegroundColor Green "DSC compilation jobs completed successfully!"
 
@@ -98,3 +104,28 @@ $dcAvailabilitySet = @("DC2", "DC3") | % {
      
      if ($?){Write-Host -ForegroundColor Green "$($_.ToString()) was successfully registered as a DSC node!"}
 }
+
+
+
+$allNodes = Get-AzureRmAutomationDscNode -AutomationAccountName $automationAcc -ResourceGroupName $automationRg | sort-object -Property RegistrationTime
+
+$allNodes | ForEach-Object {
+    New-AzureRmResourceGroupDeployment -ResourceGroupName $rg.ResourceGroupName -TemplateFile "C:\Users\slk0emcl\Desktop\contoso-template-azure\ARM\azuredeployment.json" -Verbose -ErrorAction Stop
+    do {
+        $uniqueCompliantId = Get-AzureRmAutomationDscNodeReport -NodeId $_.Id -ResourceGroupName $automationRg -AutomationAccountName $automationAcc | ? { $_.ReportType -eq "Consistency" -and $_.Status -eq "Compliant"} | sort -Unique
+        $compliantVmName = (Get-AzureRmAutomationDscNode -AutomationAccountName $automationAcc -ResourceGroupName $automationRg -Id $uniqueCompliantId.NodeId).Name
+        if ($uniqueCompliantId -eq $null){Write-Host -ForegroundColor Cyan "Still waiting, trying again in 1 minute.."; start-sleep -s 60}
+    } while ($uniqueCompliantId -eq $null)
+    Write-Host -ForegroundColor Green "DSC node $($compliantVmName) is now compliant!"
+}
+
+<#
+    webappdeploy
+#>
+Write-Host -ForegroundColor Yellow "Deploying WebApp & Azure SQL..."
+New-AzureRmResourceGroupDeployment -ResourceGroupName $rg.ResourceGroupName -TemplateFile "C:\Users\slk0emcl\Desktop\contoso-template-azure\ARM\azuredeploywebapp.json" -Verbose
+Write-Host -ForegroundColor Green "WebApp & Azure SQL deployed!"
+
+
+Write-Host -ForegroundColor Cyan "Listing all resources in resource group $($rg.ResourceGroupName):"
+Get-AzureRmResource | ? {$_.ResourceGroupName –eq $rg} | select ResourceName

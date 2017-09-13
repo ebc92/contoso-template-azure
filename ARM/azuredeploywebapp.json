@@ -1,0 +1,179 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "Plan1Name": {
+      "type": "string",
+      "defaultValue": "plan1",
+      "minLength": 1
+    },
+    "Plan1SkuName": {
+      "type": "string",
+      "defaultValue": "F1",
+      "allowedValues": [
+        "F1",
+        "D1",
+        "B1",
+        "B2",
+        "B3",
+        "S1",
+        "S2",
+        "S3",
+        "P1",
+        "P2",
+        "P3",
+        "P4"
+      ],
+      "metadata": {
+        "description": "Describes plan's pricing tier and capacity. Check details at https://azure.microsoft.com/en-us/pricing/details/app-service/"
+      }
+    },
+    "contosodbserverAdminLogin": {
+      "type": "string",
+      "defaultValue": "contosoadmin",
+      "minLength": 1
+    },
+    "contosodbserverAdminLoginPassword": {
+      "type": "securestring"
+    },
+    "webappdbName": {
+      "type": "string",
+      "defaultValue": "webappdb",
+      "minLength": 1
+    },
+    "webappdbCollation": {
+      "type": "string",
+      "minLength": 1,
+      "defaultValue": "SQL_Latin1_General_CP1_CI_AS"
+    },
+    "webappdbEdition": {
+      "type": "string",
+      "defaultValue": "Basic",
+      "allowedValues": [
+        "Basic",
+        "Standard",
+        "Premium"
+      ]
+    },
+    "webappdbRequestedServiceObjectiveName": {
+      "type": "string",
+      "defaultValue": "Basic",
+      "allowedValues": [
+        "Basic",
+        "S0",
+        "S1",
+        "S2",
+        "P1",
+        "P2",
+        "P3"
+      ],
+      "metadata": {
+        "description": "Describes the performance level for Edition"
+      }
+    }
+  },
+  "variables": {
+    "contosodbserverName": "[concat('contosodbserver', uniqueString(resourceGroup().id))]",
+    "contosowebappName": "[concat('contosowebapp', uniqueString(resourceGroup().id))]"},
+  "resources": [
+    {
+      "name": "[parameters('Plan1Name')]",
+      "type": "Microsoft.Web/serverfarms",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2015-08-01",
+      "sku": {
+        "name": "[parameters('Plan1SkuName')]"
+      },
+      "dependsOn": [ ],
+      "tags": {
+        "displayName": "Plan1"
+      },
+      "properties": {
+        "name": "[parameters('Plan1Name')]",
+        "numberOfWorkers": 1
+      }
+    },
+    {
+      "name": "[variables('contosodbserverName')]",
+      "type": "Microsoft.Sql/servers",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2014-04-01-preview",
+      "dependsOn": [ ],
+      "tags": {
+        "displayName": "contosodbserver"
+      },
+      "properties": {
+        "administratorLogin": "[parameters('contosodbserverAdminLogin')]",
+        "administratorLoginPassword": "[parameters('contosodbserverAdminLoginPassword')]"
+      },
+      "resources": [
+        {
+          "name": "AllowAllWindowsAzureIps",
+          "type": "firewallrules",
+          "location": "[resourceGroup().location]",
+          "apiVersion": "2014-04-01-preview",
+          "dependsOn": [
+            "[resourceId('Microsoft.Sql/servers', variables('contosodbserverName'))]"
+          ],
+          "properties": {
+            "startIpAddress": "0.0.0.0",
+            "endIpAddress": "0.0.0.0"
+          }
+        },
+        {
+          "name": "[parameters('webappdbName')]",
+          "type": "databases",
+          "location": "[resourceGroup().location]",
+          "apiVersion": "2014-04-01-preview",
+          "dependsOn": [
+            "[resourceId('Microsoft.Sql/servers', variables('contosodbserverName'))]"
+          ],
+          "tags": {
+            "displayName": "webappdb"
+          },
+          "properties": {
+            "collation": "[parameters('webappdbCollation')]",
+            "edition": "[parameters('webappdbEdition')]",
+            "maxSizeBytes": "1073741824",
+            "requestedServiceObjectiveName": "[parameters('webappdbRequestedServiceObjectiveName')]"
+          }
+        }
+      ]
+    },
+    {
+      "name": "[variables('contosowebappName')]",
+      "type": "Microsoft.Web/sites",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2015-08-01",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/serverfarms', parameters('Plan1Name'))]",
+        "[resourceId('Microsoft.Sql/servers', variables('contosodbserverName'))]"
+      ],
+      "tags": {
+        "[concat('hidden-related:', resourceId('Microsoft.Web/serverfarms', parameters('Plan1Name')))]": "Resource",
+        "displayName": "contosowebapp"
+      },
+      "properties": {
+        "name": "[variables('contosowebappName')]",
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('Plan1Name'))]"
+      },
+      "resources": [
+        {
+          "apiVersion": "2015-08-01",
+          "type": "config",
+          "name": "connectionstrings",
+          "dependsOn": [
+            "[variables('contosowebappName')]"
+          ],
+          "properties": {
+            "DefaultConnection": {
+              "value": "[concat('Data Source=tcp:', reference(concat('Microsoft.Sql/servers/', variables('contosodbservername'))).fullyQualifiedDomainName, ',1433;Initial Catalog=', parameters('webappdbName'), ';User Id=', parameters('contosodbserverAdminLogin'), '@', reference(concat('Microsoft.Sql/servers/', variables('contosodbserverName'))).fullyQualifiedDomainName, ';Password=', parameters('contosodbserverAdminLoginPassword'), ';')]",
+              "type": "SQLAzure"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "outputs": {}
+}

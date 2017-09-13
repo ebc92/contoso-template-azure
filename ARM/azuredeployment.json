@@ -476,20 +476,6 @@
       "properties": {
         "securityRules": [
           {
-            "name": "enable_internet_out",
-            "properties": {
-              "description": "Enable Internet outbound from Internal",
-              "protocol": "*",
-              "sourcePortRange": "*",
-              "destinationPortRange": "*",
-              "sourceAddressPrefix": "[variables('subnet1Prefix')]",
-              "destinationAddressPrefix": "Internet",
-              "access": "Allow",
-              "priority": 3500,
-              "direction": "Outbound"
-            }
-          },
-          {
             "name": "deny_all_in",
             "properties": {
               "description": "Deny all requests to Internal subnet",
@@ -499,78 +485,22 @@
               "sourceAddressPrefix": "*",
               "destinationAddressPrefix": "[variables('subnet1Prefix')]",
               "access": "Deny",
-              "priority": 4000,
+              "priority": 4096,
               "direction": "Inbound"
             }
           },
           {
-            "name": "deny_all_out",
+            "name": "allow_winrm_in",
             "properties": {
-              "description": "Deny all requests from Internal subnet",
-              "protocol": "*",
-              "sourcePortRange": "*",
-              "destinationPortRange": "*",
-              "sourceAddressPrefix": "[variables('subnet1Prefix')]",
-              "destinationAddressPrefix": "*",
-              "access": "Deny",
-              "priority": 3900,
-              "direction": "Outbound"
-            }
-          },
-          {
-            "name": "allow_dns_dmz_out",
-            "properties": {
-              "description": "Allow DNS request to DMZ",
-              "protocol": "*",
-              "sourcePortRange": "*",
-              "destinationPortRange": "[variables('dnsServerPort')]",
-              "sourceAddressPrefix": "[variables('subnet1Prefix')]",
-              "destinationAddressPrefix": "[variables('dnsServerIp')]",
-              "access": "Allow",
-              "priority": 110,
-              "direction": "Outbound"
-            }
-          },
-          {
-            "name": "allow_web_dmz_out",
-            "properties": {
-              "description": "Allow web request port 80 to DMZ",
+              "description": "Allow WinRM inbound",
               "protocol": "Tcp",
               "sourcePortRange": "*",
-              "destinationPortRange": "[variables('webServerPort')]",
-              "sourceAddressPrefix": "[variables('subnet1Prefix')]",
-              "destinationAddressPrefix": "[variables('webServerIp')]",
+              "destinationPortRange": "5985-5986",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
               "access": "Allow",
               "priority": 120,
-              "direction": "Outbound"
-            }
-          },
-          {
-            "name": "allow_web_secure_dmz_out",
-            "properties": {
-              "description": "Allow secure web requests port 443 to DMZ",
-              "protocol": "Tcp",
-              "sourcePortRange": "*",
-              "destinationPortRange": "[variables('webServerSecurePort')]",
-              "sourceAddressPrefix": "[variables('subnet1Prefix')]",
-              "destinationAddressPrefix": "[variables('webServerIp')]",
-              "access": "Allow",
-              "priority": 130,
-              "direction": "Outbound"
-            }
-          },
-          {
-            "name": "allow_ftp_dmz_out",
-            "properties": {
-              "description": "Allow FTP requests port 21 to DMZ",
-              "protocol": "Tcp",
-              "sourcePortRange": "*",
-              "destinationPortRange": "[variables('ftpServerCommunicationPort')]",
-              "sourceAddressPrefix": "[variables('subnet1Prefix')]",
-              "destinationAddressPrefix": "[variables('ftpServerIp')]",
-              "access": "Allow",
-              "priority": 140,
-              "direction": "Outbound"
+              "direction": "Inbound"
             }
           },
           {
@@ -588,17 +518,17 @@
             }
           },
           {
-            "name": "allow_rdp_dmz_out",
+            "name": "allow_all_out",
             "properties": {
-              "description": "Allow RDP to DMZ",
-              "protocol": "Tcp",
+              "description": "Allow all outbound connection",
+              "protocol": "*",
               "sourcePortRange": "*",
-              "destinationPortRange": "[variables('rdpPort')]",
-              "sourceAddressPrefix": "[variables('subnet1Prefix')]",
-              "destinationAddressPrefix": "[variables('vnetDMZPrefix')]",
+              "destinationPortRange": "*",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
               "access": "Allow",
-              "priority": 160,
-              "direction": "Outbound"
+              "priority": 4000,
+              "direction": "Inbound"
             }
           }
         ]
