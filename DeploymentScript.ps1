@@ -5,19 +5,19 @@ $rg = "TemplateDeploymentRG"
 $automationRg = "ContosoAutomationRG"
 $automationAcc = "ContosoAutomation"
 $location = "West Europe"
-
+$path = "C:\Users\slk0emcl\Desktop\MSU\contoso-template-azure\ARM\"
 
 <#
     List resources
 #>
-Write-Host -ForegroundColor Cyan "Listing all resources in resource group $($rg.ResourceGroupName):"
+Write-Host -ForegroundColor Cyan "Listing all resources in resource group $($rg):"
 
 <# 
     Create resource group and deploy ARM template to the resource group.
 #>
 Write-Host -ForegroundColor Yellow "Starting ARM template deployment.."
 $rg = New-AzureRmResourceGroup -Name $rg -Location $location
-New-AzureRmResourceGroupDeployment -ResourceGroupName $rg.ResourceGroupName -TemplateFile "C:\Users\slk0emcl\Desktop\contoso-template-azure\ARM\azuredeployment.json" -Verbose -ErrorAction Stop
+New-AzureRmResourceGroupDeployment -ResourceGroupName $rg.ResourceGroupName -TemplateFile (Join-Path -Path $path -ChildPath 'azuredeployment.json') -Verbose -ErrorAction Stop
 Write-Host -ForegroundColor Green "ARM template was deployed!"
 
 <# 
@@ -105,12 +105,9 @@ $dcAvailabilitySet = @("DC2", "DC3") | % {
      if ($?){Write-Host -ForegroundColor Green "$($_.ToString()) was successfully registered as a DSC node!"}
 }
 
-
-
 $allNodes = Get-AzureRmAutomationDscNode -AutomationAccountName $automationAcc -ResourceGroupName $automationRg | sort-object -Property RegistrationTime
 
 $allNodes | ForEach-Object {
-    New-AzureRmResourceGroupDeployment -ResourceGroupName $rg.ResourceGroupName -TemplateFile "C:\Users\slk0emcl\Desktop\contoso-template-azure\ARM\azuredeployment.json" -Verbose -ErrorAction Stop
     do {
         $uniqueCompliantId = Get-AzureRmAutomationDscNodeReport -NodeId $_.Id -ResourceGroupName $automationRg -AutomationAccountName $automationAcc | ? { $_.ReportType -eq "Consistency" -and $_.Status -eq "Compliant"} | sort -Unique
         $compliantVmName = (Get-AzureRmAutomationDscNode -AutomationAccountName $automationAcc -ResourceGroupName $automationRg -Id $uniqueCompliantId.NodeId).Name
@@ -123,9 +120,9 @@ $allNodes | ForEach-Object {
     webappdeploy
 #>
 Write-Host -ForegroundColor Yellow "Deploying WebApp & Azure SQL..."
-New-AzureRmResourceGroupDeployment -ResourceGroupName $rg.ResourceGroupName -TemplateFile "C:\Users\slk0emcl\Desktop\contoso-template-azure\ARM\azuredeploywebapp.json" -Verbose
+New-AzureRmResourceGroupDeployment -ResourceGroupName $rg.ResourceGroupName -TemplateFile (Join-Path -Path $path -ChildPath 'azuredeploywebapp.json') -Verbose
 Write-Host -ForegroundColor Green "WebApp & Azure SQL deployed!"
 
 
 Write-Host -ForegroundColor Cyan "Listing all resources in resource group $($rg.ResourceGroupName):"
-Get-AzureRmResource | ? {$_.ResourceGroupName –eq $rg} | select ResourceName
+Get-AzureRmResource | ? {$_.ResourceGroupName –eq $rg.ResourceGroupName} | select ResourceName
