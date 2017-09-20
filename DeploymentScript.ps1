@@ -110,8 +110,9 @@ $allNodes = Get-AzureRmAutomationDscNode -AutomationAccountName $automationAcc -
 $allNodes | ForEach-Object {
     do {
         $uniqueCompliantId = Get-AzureRmAutomationDscNodeReport -NodeId $_.Id -ResourceGroupName $automationRg -AutomationAccountName $automationAcc | ? { $_.ReportType -eq "Consistency" -and $_.Status -eq "Compliant"} | sort -Unique
-        $compliantVmName = (Get-AzureRmAutomationDscNode -AutomationAccountName $automationAcc -ResourceGroupName $automationRg -Id $uniqueCompliantId.NodeId).Name
-        if ($uniqueCompliantId -eq $null){Write-Host -ForegroundColor Cyan "Still waiting, trying again in 1 minute.."; start-sleep -s 60}
+        if ($uniqueCompliantId -eq $null){Write-Host -ForegroundColor Cyan "Still waiting, trying again in 1 minute.."; start-sleep -s 60} else {
+            $compliantVmName = (Get-AzureRmAutomationDscNode -AutomationAccountName $automationAcc -ResourceGroupName $automationRg -Id $uniqueCompliantId.NodeId).Name
+        }
     } while ($uniqueCompliantId -eq $null)
     Write-Host -ForegroundColor Green "DSC node $($compliantVmName) is now compliant!"
 }
